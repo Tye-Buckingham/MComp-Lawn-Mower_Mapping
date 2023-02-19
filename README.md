@@ -29,3 +29,12 @@
 ![Testing_Traversal_Mapping_Animated](./Images/Traversal_Sine_SM.png)
 ![Testing_Traversal_Mapping_Animated](./Images/Garden_Example_SM.png)
 ![Testing_Traversal_Mapping_Animated](./Images/Nogo_Zones_SM.png)
+
+# References
+
+The algorithm in its current state is based primarily on the work found in:
+Song, M., Kabir, M. S. N., Chung, S. O., Kim, Y. J., Ha, J. K., & Lee, K. H. (2015). Path planning for autonomous lawn mower tractor. Korean Journal of Agricultural Science, 42(1), 63-71.
+
+Chung, C. H., Wang, K. C., Liu, K. T., Wu, Y. T., Lin, C. C., & Chang, C. Y. (2020, September). Path planning algorithm for robotic lawnmower using RTK-GPS localization. In 2020 International Symposium on Community-centric Systems (CcS) (pp. 1-4). IEEE.
+
+Further reading has been and will continue to be conducted therefore, this section will be updated when ever the implementation draws from those sources.
