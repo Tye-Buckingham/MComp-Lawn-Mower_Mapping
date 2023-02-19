@@ -11,6 +11,7 @@ sent to the robot for traversal/surveying
 
 import math
 import random
+from enum import Enum
 from random import randrange
 
 import geopandas
@@ -20,6 +21,10 @@ import numpy as np
 import pyclipper
 import utm
 from shapely.geometry import LineString, Point, Polygon
+from surveytoolbox.bdc import bearing_distance_from_coordinates
+from surveytoolbox.cbd import coordinates_from_bearing_distance
+from surveytoolbox.config import BEARING, EASTING, ELEVATION, NORTHING
+from surveytoolbox.fmt_dms import format_as_dms
 
 
 def midpoint(p1, p2):
@@ -45,24 +50,52 @@ def gradient(p1, p2):
     return ((p2[1] - p1[1]) / (p2[0] - p1[0]))
 
 
+def utm_bearing(p1, p2):
+    dist = bearing_distance_from_coordinates(
+        {
+            EASTING: p1[0],
+            NORTHING: p1[1],
+            ELEVATION: 0
+        }, {
+            EASTING: p2[0],
+            NORTHING: p2[1],
+            ELEVATION: 0
+        })
+    return dist['bg']
+
+
+def utm_dist(p1, p2):
+    dist = bearing_distance_from_coordinates(
+        {
+            EASTING: p1[0],
+            NORTHING: p1[1],
+            ELEVATION: 0
+        }, {
+            EASTING: p2[0],
+            NORTHING: p2[1],
+            ELEVATION: 0
+        })
+    return dist['dist_2d']
+
+
 def remove_inter(points):
-    length = 0.1  # metres
+    length = 10  # metres
     j = 1
     i = 0
     new = np.empty((0, 2))
-    while j < len(points):
-        # g1 = gradient(points[i - 1], points[i])
-        # g2 = gradient(points[i], points[i + 1])
-
-        x_diff = abs(points[i, 0] - points[j, 0])
-        y_diff = abs(points[i, 1] - points[j, 1])
-
-        while (x_diff == 0 or y_diff == 0) and j < len(points) and math.dist(
-                points[i, :], points[j, :]) < length:
+    while j < len(points) - 1 and i < len(points) - 1:
+        new = np.vstack([new, points[i, :]])
+        new = np.vstack([new, points[j, :]])
+        while (points[i, 0] == points[j, 0] or points[i, 1]
+               == points[j, 1]) and j < len(points) - 1 and math.dist(
+                   points[i], points[j]) < length:
+            if utm_dist(points[i], new[-1]) > utm_dist(points[i], points[j]):
+                print("breaking")
+                break
+            new[-1] = points[j]
             j += 1
-        for m in range(i, j):
-            new = np.vstack([new, points[m, :]])
-        i = j + 1
+
+        i = j
         j = j + 1
 
     return new
@@ -300,7 +333,7 @@ def inner_outer(xy_per, xy_nogos, width):
                            pyclipper.ET_CLOSEDPOLYGON)
 
     new_coordinates = clipper_offset.Execute(
-        pyclipper.scale_to_clipper(-(width / 2)))
+        pyclipper.scale_to_clipper(-(width)))
     inner = np.array(pyclipper.scale_from_clipper(new_coordinates)
                      [0])  # New inner perimeter to avoid clipping outside
 
@@ -342,10 +375,27 @@ def close_shape(shape):
 def main():
     height = 0.3
     width = 0.3
-    overlap = 2
-    test_shape = np.array([[]])
+    overlap = 0.75
+    test_shape = np.array([[52.483234153413754, 1.7108827435095009],
+                           [52.4831872341742, 1.711037618570117],
+                           [52.48316602529285, 1.7110165329268057],
+                           [52.48318126106068, 1.7109754395005439],
+                           [52.48315477160071, 1.7109457983406173],
+                           [52.48313979553347, 1.7109953125509492],
+                           [52.48313139854779, 1.710897429356919],
+                           [52.48322740119847, 1.7108808572538692]])
 
-    nogos = list((np.array([[]]), np.array([[]])))
+    nogos = list()
+    # list((np.array([[52.483155075712666, 1.7109081770028178],
+    #                         [52.483154829382144, 1.7109320621065363],
+    #                         [52.483149015981716, 1.7109322538007876],
+    #                         [52.48314906524782, 1.710908790424422],
+    #                         [52.48315453378551, 1.710905799994101]]),
+    #               np.array([[52.48319976007018, 1.7109187968643427],
+    #                         [52.483189364921955, 1.7109514999036233],
+    #                         [52.48317842784658, 1.7109355892807612],
+    #                         [52.48318951272027, 1.7109077552754648],
+    #                         [52.48320015419902, 1.7109173783268827]])))
 
     #######################################
     ####        Formatting Data        ####
@@ -376,8 +426,8 @@ def main():
     # Append one point from inner perimeter and one from each nogo-zone
     # allowing TSP to link them together
 
-    # test_points = np.append(test_points, [inner[0, :]], axis=0)
-    test_points = np.concatenate((test_points, inner))
+    test_points = np.append(test_points, [inner[0, :]], axis=0)
+    # test_points = np.concatenate((test_points, inner))
     for i in range(len(outer_nogos)):
         test_points = np.concatenate((test_points, outer_nogos[i]))
 
@@ -391,14 +441,14 @@ def main():
 
     # Complete the TSP algorithm
     tsp = nx.approximation.traveling_salesman_problem(test_graph, cycle=True)
-    tsp = np.array(tsp)  # turn TSP UTM to GPS
+    tsp = np.array(tsp)
 
     # Adding some noise to a seperate set for testing of the traversal algorithm
     final_noise = tsp  # keep original for testing
-    final_route = remove_inter(tsp)  # reduced points
+    tsp = remove_inter(tsp)  # reduced points
     # Complete Shapes
     inner = np.append(inner, [inner[0, :]], axis=0)
-
+    final_route = np.concatenate((inner, tsp))
     #######################################
     ####  Plotting bounds and points   ####
     #######################################
@@ -410,6 +460,7 @@ def main():
     ])
 
     f, ax = plt.subplots()
+    plt.axis('off')
     s.buffer(width / 2).plot(alpha=0.5, ax=ax)
     plt.plot(inner[:, 0], inner[:, 1])
     plt.plot(xy_per[:, 0], xy_per[:, 1])
@@ -443,7 +494,7 @@ def main():
 
     # Saving route
     np.savetxt("../Map_Matching_Uniform/Noise_Tests/route.out",
-               np.around(final_route, decimals=5),
+               final_route,
                delimiter=',')
 
     # Adding noise to simulate inaccuracy and errors
@@ -459,7 +510,7 @@ def main():
                     -0.50, 0.50)
             else:
                 noise_route[j, :] = final_noise[j, :]
-        np.savetxt(fname, np.around(noise_route, decimals=5), delimiter=',')
+        np.savetxt(fname, noise_route, delimiter=',')
 
     print(len(final_route))
     print(((len(final_route) * 2) * 32) / 8)

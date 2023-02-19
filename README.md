@@ -21,6 +21,10 @@
  deemed off course. These points can be read, graphed and animated by `testing.py` by simply 
  running it.
  
+# Changelog
+
+  * 19/02/2023: Updated the removal of the intermittent points method to include handling a change in direction. This reduces the amount of uncovered areas around corners and edges - see images 4 and 5 in the examples section. The inner perimeter has been moved slightly further in to prevent the robot not being able to get to points in the corner, this will be fixed in the LiDAR methods.
+  
 # Examples 
 
 	These examples can be found in larger verisions within './Images'
@@ -29,10 +33,12 @@
 ![Testing_Traversal_Mapping_Animated](./Images/Traversal_Sine_SM.png)
 ![Testing_Traversal_Mapping_Animated](./Images/Garden_Example_SM.png)
 ![Testing_Traversal_Mapping_Animated](./Images/Nogo_Zones_SM.png)
+![Testing_Traversal_Mapping_Animated](./Images/Direction_Change_Route_SM.png)
 
 # References
 
 The algorithm in its current state is based primarily on the work found in:
+
 Song, M., Kabir, M. S. N., Chung, S. O., Kim, Y. J., Ha, J. K., & Lee, K. H. (2015). Path planning for autonomous lawn mower tractor. Korean Journal of Agricultural Science, 42(1), 63-71.
 
 Chung, C. H., Wang, K. C., Liu, K. T., Wu, Y. T., Lin, C. C., & Chang, C. Y. (2020, September). Path planning algorithm for robotic lawnmower using RTK-GPS localization. In 2020 International Symposium on Community-centric Systems (CcS) (pp. 1-4). IEEE.
