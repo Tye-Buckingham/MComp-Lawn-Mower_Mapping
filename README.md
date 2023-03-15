@@ -24,6 +24,8 @@
 # Changelog
 
   * 19/02/2023: Updated the removal of the intermittent points method to include handling a change in direction. This reduces the amount of uncovered areas around corners and edges - see images 4 and 5 in the examples section. The inner perimeter has been moved slightly further in to prevent the robot not being able to get to points in the corner, this will be fixed in the LiDAR methods.
+  * 15/03/2023: Produces two overlapping routes by changing the weighting on the graph to alternate favouring left-right/up-down movement
+  	* **Options need to be added for the user to select or omit this step**
   
 # Examples 
 
