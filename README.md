@@ -21,6 +21,8 @@
  deemed off course. These points can be read, graphed and animated by `testing.py` by simply 
  running it.
  
+ These methods have been re-written and implemented in Python, found in the associated `Obstacle Detection` repo. This shows the robot traversing the route in a *more* realistic way. Adding noise and adjusting movement distance will help improve the *realism* though the best option will be to apply these methods on the physical device. 
+ 
 # Changelog
 
   * 19/02/2023: Updated the removal of the intermittent points method to include handling a change in direction. This reduces the amount of uncovered areas around corners and edges - see images 4 and 5 in the examples section. The inner perimeter has been moved slightly further in to prevent the robot not being able to get to points in the corner, this will be fixed in the LiDAR methods.
