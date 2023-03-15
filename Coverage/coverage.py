@@ -127,13 +127,18 @@ def contained_x(bounds, x):
     return bounds[2] > x > bounds[0]
 
 
-def graph(points, height, width, overlap):
+def graph(points, height, width, overlap, k):
     """Generates the graph required for TSP from the generated from
     Quantise
 
     Args:
         points: The points from Quantise, will be used as nodes in the
             graph
+        height: The height of the robot
+        width: The width of the robot
+        overlap: Overlap of the given route
+        k: The factor to favour up-down over left-right movement to generate
+           overlapping routes.
 
     Returns:
         An undirected weighted graph to be used in TSP
@@ -155,7 +160,8 @@ def graph(points, height, width, overlap):
                         points[i, 1]]).all(axis=1))[0]
         if j.size > 0:
             j = j[0]
-            edges.append(tuple((i, j, math.dist(points[i, :], points[j, :]))))
+            edges.append(
+                tuple((i, j, math.dist(points[i, :], points[j, :] * k))))
 
         # right
         j = np.where(
@@ -163,7 +169,8 @@ def graph(points, height, width, overlap):
                         points[i, 1]]).all(axis=1))[0]
         if j.size > 0:
             j = j[0]
-            edges.append(tuple((i, j, math.dist(points[i, :], points[j, :]))))
+            edges.append(
+                tuple((i, j, math.dist(points[i, :], points[j, :] * k))))
 
         # up
         j = np.where((points == [points[i, 0],
@@ -435,8 +442,11 @@ def main():
     ####         Processing Data       ####
     #######################################
 
+    # k
+
     # Graph the points
-    test_graph = graph(test_points, height, width, overlap)
+    inner = np.append(inner, [inner[0, :]], axis=0)
+    test_graph = graph(test_points, height, width, overlap, 1.0)
     print(test_graph)
 
     # Complete the TSP algorithm
@@ -446,9 +456,21 @@ def main():
     # Adding some noise to a seperate set for testing of the traversal algorithm
     final_noise = tsp  # keep original for testing
     tsp = remove_inter(tsp)  # reduced points
-    # Complete Shapes
-    inner = np.append(inner, [inner[0, :]], axis=0)
     final_route = np.concatenate((inner, tsp))
+
+    # Graph the points
+    test_graph = graph(test_points, height, width, overlap, 1.5)
+    print(test_graph)
+
+    # Complete the TSP algorithm
+    tsp = nx.approximation.traveling_salesman_problem(test_graph, cycle=True)
+    tsp = np.array(tsp)
+
+    # Adding some noise to a seperate set for testing of the traversal algorithm
+    final_noise = tsp  # keep original for testing
+    tsp = remove_inter(tsp)  # reduced points
+    final_route = np.concatenate((final_route, tsp))
+
     #######################################
     ####  Plotting bounds and points   ####
     #######################################
@@ -464,7 +486,11 @@ def main():
     s.buffer(width / 2).plot(alpha=0.5, ax=ax)
     plt.plot(inner[:, 0], inner[:, 1])
     plt.plot(xy_per[:, 0], xy_per[:, 1])
-    plt.plot(tsp[:, 0], tsp[:, 1], linewidth=0.1, color='red')
+    plt.plot(final_route[:, 0], final_route[:, 1], linewidth=0.1, color='red')
+    plt.scatter(final_route[:, 0],
+                final_route[:, 1],
+                linewidth=0.1,
+                color='green')
     for i in range(len(outer_nogos)):
         # plt.plot(outer_nogos[i][:, 0],
         #          outer_nogos[i][:, 1],
