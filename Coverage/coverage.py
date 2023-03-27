@@ -386,15 +386,6 @@ def main():
     # Quantise the in perimeter, checking for outer nogo-zones
     test_points = quantise(inner, height, width, overlap, outer_nogos)
 
-    # Convert back to GPS - if needed
-    # gps_points = xy_per
-    # for i in range(len(xy_per)):
-    #     gps = np.array(
-    #         utm.to_latlon(xy_per[i, 0], xy_per[i, 1], zone_nums[0],
-    #                       zone_lets[0]))
-    #     gps_points[i, 0] = gps[0]
-    #     gps_points[i, 1] = gps[1]
-
     # Append one point from inner perimeter and one from each nogo-zone
     # allowing TSP to link them together
 
@@ -407,11 +398,9 @@ def main():
     ####         Processing Data       ####
     #######################################
 
-    # k
-
     # Graph the points
     inner = np.append(inner, [inner[0, :]], axis=0)
-    test_graph = graph(test_points, height, width, overlap, 1.0)
+    test_graph = graph(test_points, height, width, overlap, 1.0, 1.5)
     print(test_graph)
 
     # Complete the TSP algorithm
@@ -424,7 +413,7 @@ def main():
     final_route = np.concatenate((inner, tsp))
 
     # Graph the points
-    test_graph = graph(test_points, height, width, overlap, 1.5)
+    test_graph = graph(test_points, height, width, overlap, 1.5, 1.0)
     print(test_graph)
 
     # Complete the TSP algorithm
