@@ -31,21 +31,6 @@ def midpoint(p1, p2):
     return np.array([[(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2]])
 
 
-def inter_points(p1, p2, num):
-    points = np.array([p1, p2])
-
-    for i in range(num - 1):
-        r = randrange(len(points) - 1)
-        if i % 2 == 0:
-            p = midpoint(p1, points[r, :])
-            points = np.concatenate((points, p))
-        else:
-            p = midpoint(p2, points[r, :])
-            points = np.concatenate((points, p))
-
-    return points
-
-
 def gradient(p1, p2):
     return ((p2[1] - p1[1]) / (p2[0] - p1[0]))
 
@@ -78,8 +63,18 @@ def utm_dist(p1, p2):
     return dist['dist_2d']
 
 
-def remove_inter(points):
-    length = 10  # metres
+def remove_intermediate_points(points, length):
+    """Remove points that lie between two points that are a given
+    distance away.
+
+    This functions removes points which are close together and on the
+    same line. This is to reduce the memory requirements of the route.
+    Less points may result in worse accuracy so testing to find an
+    optimal median is encouraged.
+
+    Args:
+        points: The [x, y] points of the traversal route.
+    """
     j = 1
     i = 0
     new = np.empty((0, 2))
@@ -127,7 +122,7 @@ def contained_x(bounds, x):
     return bounds[2] > x > bounds[0]
 
 
-def graph(points, height, width, overlap, k):
+def graph(points, height, width, overlap, up_down, left_right):
     """Generates the graph required for TSP from the generated from
     Quantise
 
@@ -137,8 +132,10 @@ def graph(points, height, width, overlap, k):
         height: The height of the robot
         width: The width of the robot
         overlap: Overlap of the given route
-        k: The factor to favour up-down over left-right movement to generate
-           overlapping routes.
+        up_down: The factor to favour up-down over left-right movement to generate
+              overlapping routes.
+        left_right: The factor to favour left-right over up-down movement to generate
+              overlapping routes.
 
     Returns:
         An undirected weighted graph to be used in TSP
@@ -146,12 +143,6 @@ def graph(points, height, width, overlap, k):
 
     g = nx.Graph()
     edges = list(tuple())
-
-    # for i in range(len(points)):
-    #     for j in range(len(points)):
-    #         if i != j:
-    #             edges.append(
-    #                 tuple((i, j, math.dist(points[i, :], points[j, :]))))
 
     for i in range(len(points)):
         # left
@@ -161,7 +152,8 @@ def graph(points, height, width, overlap, k):
         if j.size > 0:
             j = j[0]
             edges.append(
-                tuple((i, j, math.dist(points[i, :], points[j, :] * k))))
+                tuple((i, j, math.dist(points[i, :],
+                                       points[j, :] * left_right))))
 
         # right
         j = np.where(
@@ -170,33 +162,29 @@ def graph(points, height, width, overlap, k):
         if j.size > 0:
             j = j[0]
             edges.append(
-                tuple((i, j, math.dist(points[i, :], points[j, :] * k))))
+                tuple((i, j, math.dist(points[i, :],
+                                       points[j, :] * left_right))))
 
         # up
         j = np.where((points == [points[i, 0],
                                  points[i, 1] + height]).all(axis=1))[0]
         if j.size > 0:
             j = j[0]
-            edges.append(tuple((i, j, math.dist(points[i, :], points[j, :]))))
+            edges.append(
+                tuple((i, j, math.dist(points[i, :] * up_down, points[j, :]))))
 
         # down
         j = np.where((points == [points[i, 0],
                                  points[i, 1] - height]).all(axis=1))[0]
         if j.size > 0:
             j = j[0]
-            edges.append(tuple((i, j, math.dist(points[i, :], points[j, :]))))
+            edges.append(
+                tuple((i, j, math.dist(points[i, :] * up_down, points[j, :]))))
 
     for i in range(len(edges)):
         g.add_edge(tuple(points[edges[i][0]]),
                    tuple(points[edges[i][1]]),
                    weight=edges[i][2])
-
-    # pos = nx.spring_layout(g)
-    # fig, ax = plt.subplots()
-    # nx.draw(g, pos=pos, node_size=15, ax=ax)  # draw nodes and edges
-    # plt.axis("on")
-    # ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
-    # plt.show()
 
     return g
 
@@ -256,12 +244,6 @@ def quantise(shape, height, width, overlap, nogos):
         y += height
         x = min_x + x_buff
 
-    # shape = np.append(shape, [shape[0, :]], axis=0)
-    # plt.plot(shape[:, 0], shape[:, 1])
-    # # plt.scatter(bounds_shape[:, 0], bounds_shape[:, 1], alpha=0.5)
-    # points = np.append(points, [points[0, :]], axis=0)
-    # plt.scatter(points[:, 0], points[:, 1])
-    # plt.show()
     return points
 
 
@@ -340,14 +322,14 @@ def inner_outer(xy_per, xy_nogos, width):
                            pyclipper.ET_CLOSEDPOLYGON)
 
     new_coordinates = clipper_offset.Execute(
-        pyclipper.scale_to_clipper(-(width)))
+        pyclipper.scale_to_clipper(-(width / 2)))
     inner = np.array(pyclipper.scale_from_clipper(new_coordinates)
                      [0])  # New inner perimeter to avoid clipping outside
-
     simple_per = geopandas.GeoSeries([
         LineString(geopandas.points_from_xy(x=inner[:, 0], y=inner[:, 1])),
     ])
-    simple_per = simple_per.simplify(1)
+
+    simple_per = simple_per.simplify(0.1)
 
     # Do the same for each nogo-shape, but with a positive offset
     # rather too far away than too close
@@ -383,26 +365,9 @@ def main():
     height = 0.3
     width = 0.3
     overlap = 0.75
-    test_shape = np.array([[52.483234153413754, 1.7108827435095009],
-                           [52.4831872341742, 1.711037618570117],
-                           [52.48316602529285, 1.7110165329268057],
-                           [52.48318126106068, 1.7109754395005439],
-                           [52.48315477160071, 1.7109457983406173],
-                           [52.48313979553347, 1.7109953125509492],
-                           [52.48313139854779, 1.710897429356919],
-                           [52.48322740119847, 1.7108808572538692]])
 
+    test_shape = np.array([])
     nogos = list()
-    # list((np.array([[52.483155075712666, 1.7109081770028178],
-    #                         [52.483154829382144, 1.7109320621065363],
-    #                         [52.483149015981716, 1.7109322538007876],
-    #                         [52.48314906524782, 1.710908790424422],
-    #                         [52.48315453378551, 1.710905799994101]]),
-    #               np.array([[52.48319976007018, 1.7109187968643427],
-    #                         [52.483189364921955, 1.7109514999036233],
-    #                         [52.48317842784658, 1.7109355892807612],
-    #                         [52.48318951272027, 1.7109077552754648],
-    #                         [52.48320015419902, 1.7109173783268827]])))
 
     #######################################
     ####        Formatting Data        ####
@@ -455,7 +420,7 @@ def main():
 
     # Adding some noise to a seperate set for testing of the traversal algorithm
     final_noise = tsp  # keep original for testing
-    tsp = remove_inter(tsp)  # reduced points
+    tsp = remove_intermediate_points(tsp, 10)  # reduced points
     final_route = np.concatenate((inner, tsp))
 
     # Graph the points
@@ -468,7 +433,7 @@ def main():
 
     # Adding some noise to a seperate set for testing of the traversal algorithm
     final_noise = tsp  # keep original for testing
-    tsp = remove_inter(tsp)  # reduced points
+    tsp = remove_intermediate_points(tsp, 10)  # reduced points
     final_route = np.concatenate((final_route, tsp))
 
     #######################################
@@ -539,7 +504,7 @@ def main():
         np.savetxt(fname, noise_route, delimiter=',')
 
     print(len(final_route))
-    print(((len(final_route) * 2) * 32) / 8)
+    print(final_route)
 
     # Converting back to GPS (long, lat)
     # for i in range(len(final_route)):
