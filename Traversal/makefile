@@ -2,7 +2,7 @@ TARGET 	= map
 LIBS	=
 CC	= gcc
 CFLAGS  = -g -Wall -Wpedantic -Werror -Wconversion -Wextra -std=c11 -O3
-TFLAGS  = -g  
+TFLAGS  = -g -fprofile-arcs -ftest-coverage
 RM      = rm -f
 
 default: all
