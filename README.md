@@ -23,6 +23,54 @@
  
  These methods have been re-written and implemented in Python, found in the associated `Obstacle Detection` repo. This shows the robot traversing the route in a *more* realistic way. Adding noise and adjusting movement distance will help improve the *realism* though the best option will be to apply these methods on the physical device. 
  
+# Process
+
+The original perimeter to produce a coverage map.
+
+![original_step](./Images/original.png "Original Area")
+
+First, we create a bounding box area the shape and quantize this shape into
+a grid with each section being the size of the robot. We then take
+the centroid of each section.
+
+![step_1](./Images/step_1.png "First step of creating coverage map")
+
+Then, only points within the grid are kept.
+
+![step_2](./Images/step_2.png "Second step of creating coverage map")
+
+The points are connected as a graph. Using the NetworkX library, we use 
+the travelling salesman algorithm to find the shortest path between all - only
+travelling to each point once, in the shortest distance.
+
+![step_3](./Images/step_3.png "Third step of creating coverage map")
+
+This path then produces this coverage when taking into account the robot's
+width and height, or rather this would be the mower's blades.
+
+![step_4](./Images/step_4.png "Fourth step of creating coverage map")
+
+In order to increase accuracy we can adjust the path to have overlap, 
+this is with 50% overlap.
+
+![step_5](./Images/step_5.png "Fifth step of creating coverage map")
+
+We can see less gaps in the overall coverage, however, we can now see
+coverage going outside the defined perimeter.
+
+![step_6](./Images/step_6.png "Sixth step of creating coverage map")
+
+This overlap generally gets worse with more complex shapes.
+
+![step_7](./Images/step_7.png "Seventh step of creating coverage map")
+
+To fix this we create a smaller perimeter within the original, and traverse this
+route first. Points are now only kept if they are inside this smaller perimeter.
+
+The offset of this perimeter is 50% of the mower's width.
+
+![step_8](./Images/step_8.png "Eighth step of creating coverage map")
+ 
 # Changelog
 
   * 19/02/2023: Updated the removal of the intermittent points method to include handling a change in direction. This reduces the amount of uncovered areas around corners and edges - see images 4 and 5 in the examples section. The inner perimeter has been moved slightly further in to prevent the robot not being able to get to points in the corner, this will be fixed in the LiDAR methods.
