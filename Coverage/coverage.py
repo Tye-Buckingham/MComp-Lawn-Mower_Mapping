@@ -85,7 +85,6 @@ def remove_intermediate_points(points, length):
                == points[j, 1]) and j < len(points) - 1 and math.dist(
                    points[i], points[j]) < length:
             if utm_dist(points[i], new[-1]) > utm_dist(points[i], points[j]):
-                print("breaking")
                 break
             new[-1] = points[j]
             j += 1
@@ -143,48 +142,39 @@ def graph(points, height, width, overlap, up_down, left_right):
 
     g = nx.Graph()
     edges = list(tuple())
+    # Way too close, make the list some form of hash map
+    print("Processing " + str(len(points)) + " points into graph")
+    p = 0
+    for i in points:
 
-    for i in range(len(points)):
-        # left
-        j = np.where(
-            (points == [points[i, 0] - (width * overlap),
-                        points[i, 1]]).all(axis=1))[0]
-        if j.size > 0:
-            j = j[0]
+        left = ((i[0] - (width * overlap), i[1]))
+        if left in points:
             edges.append(
-                tuple((i, j, math.dist(points[i, :],
-                                       points[j, :] * left_right))))
+                tuple((i, left, math.dist([i[0], i[1]], [left[0], left[1]]) *
+                       left_right)))
 
-        # right
-        j = np.where(
-            (points == [points[i, 0] + (width * overlap),
-                        points[i, 1]]).all(axis=1))[0]
-        if j.size > 0:
-            j = j[0]
+        right = ((i[0] + (width * overlap), i[1]))
+        if left in points:
             edges.append(
-                tuple((i, j, math.dist(points[i, :],
-                                       points[j, :] * left_right))))
+                tuple(
+                    (i, right, math.dist([i[0], i[1]], [right[0], right[1]]) *
+                     left_right)))
 
-        # up
-        j = np.where((points == [points[i, 0],
-                                 points[i, 1] + height]).all(axis=1))[0]
-        if j.size > 0:
-            j = j[0]
+        up = (([i[0], i[1] + height]))
+        if left in points:
             edges.append(
-                tuple((i, j, math.dist(points[i, :] * up_down, points[j, :]))))
+                tuple((i, up,
+                       math.dist([i[0], i[1]], [up[0], up[1]]) * up_down)))
 
-        # down
-        j = np.where((points == [points[i, 0],
-                                 points[i, 1] - height]).all(axis=1))[0]
-        if j.size > 0:
-            j = j[0]
+        down = (([i[0], i[1] - height]))
+        if left in points:
             edges.append(
-                tuple((i, j, math.dist(points[i, :] * up_down, points[j, :]))))
+                tuple((i, down,
+                       math.dist([i[0], i[1]], [down[0], down[1]]) * up_down)))
 
-    for i in range(len(edges)):
-        g.add_edge(tuple(points[edges[i][0]]),
-                   tuple(points[edges[i][1]]),
-                   weight=edges[i][2])
+    print("Adding " + str(len(edges)) + " edges to graph")
+    for edge in edges:
+        g.add_edge(tuple(edge[0]), tuple(edge[1]), weight=edge[2])
 
     return g
 
@@ -227,7 +217,7 @@ def quantise(shape, height, width, overlap, nogos):
     min_y = shape[:, 1].min()
     x = min_x + x_buff
     y = min_y + y_buff
-    points = np.empty(shape=[0, 2])
+    points = set()
     poly = Polygon(shape)
     nogo_polys = list(map(Polygon, nogos))
     while contained_y(bounds, y):
@@ -239,7 +229,7 @@ def quantise(shape, height, width, overlap, nogos):
                     in_nogo = True
                     break
             if poly.contains(p) and in_nogo == False:
-                points = np.append(points, [[x, y]], axis=0)
+                points.add((x, y))
             x += width * overlap
         y += height
         x = min_x + x_buff
@@ -322,7 +312,7 @@ def inner_outer(xy_per, xy_nogos, width):
                            pyclipper.ET_CLOSEDPOLYGON)
 
     new_coordinates = clipper_offset.Execute(
-        pyclipper.scale_to_clipper(-(width / 2)))
+        pyclipper.scale_to_clipper(-(width)))
     inner = np.array(pyclipper.scale_from_clipper(new_coordinates)
                      [0])  # New inner perimeter to avoid clipping outside
     simple_per = geopandas.GeoSeries([
@@ -365,47 +355,74 @@ def main():
     height = 0.3
     width = 0.3
     overlap = 0.75
-
     test_shape = np.array([])
-    nogos = list()
+
+    nogos = list(np.array([[]]))
 
     #######################################
     ####        Formatting Data        ####
     #######################################
-
+    print("Formatting Data")
     test_shape = close_shape(test_shape)
     for i in range(len(nogos)):
         nogos[i] = close_shape(nogos[i])
 
+    print("Converting to UTM")
     # To UTM
-    [xy_per, xy_nogos, zone_nums, zone_lets] = to_xy(test_shape, nogos)
+    try:
+        [xy_per, xy_nogos, zone_nums, zone_lets] = to_xy(test_shape, nogos)
+    except utm.error.OutOfRangeError:
+        print("Point's arent UTM - assuming already in GPS")
+        xy_per = test_shape
+        xy_nogos = nogos
 
+    print("Creating Inner and Outer Perimeters")
     # Create inner perimeter and outter nogo boundaries
     [inner, outer_nogos] = inner_outer(xy_per, xy_nogos, width)
 
+    print("Quantising")
     # Quantise the in perimeter, checking for outer nogo-zones
     test_points = quantise(inner, height, width, overlap, outer_nogos)
 
+    # Convert back to GPS - if needed
+    # gps_points = xy_per
+    # for i in range(len(xy_per)):
+    #     gps = np.array(
+    #         utm.to_latlon(xy_per[i, 0], xy_per[i, 1], zone_nums[0],
+    #                       zone_lets[0]))
+    #     gps_points[i, 0] = gps[0]
+    #     gps_points[i, 1] = gps[1]
+
+    print("Appending Points")
     # Append one point from inner perimeter and one from each nogo-zone
     # allowing TSP to link them together
 
-    test_points = np.append(test_points, [inner[0, :]], axis=0)
-    # test_points = np.concatenate((test_points, inner))
-    for i in range(len(outer_nogos)):
-        test_points = np.concatenate((test_points, outer_nogos[i]))
+    inner = np.append(inner, [inner[0, :]], axis=0)
+    for i in inner:
+        test_points.add((i[0], i[1]))
+    for nogo in outer_nogos:
+        for point in nogo:
+            test_points.add((point[0], point[1]))
+
+    # Need to refactor for the change to sets
+    # inner = np.append(inner, [inner[0, :]], axis=0)
+    # for i in range(len(outer_nogos)):
+    #     test_points = np.concatenate((test_points, outer_nogos[i]))
+
+    # test_points = np.append([inner[0, :]], test_points, axis=0)
 
     #######################################
     ####         Processing Data       ####
     #######################################
-
+    print("Processing Data")
     # Graph the points
-    inner = np.append(inner, [inner[0, :]], axis=0)
     test_graph = graph(test_points, height, width, overlap, 1.0, 1.5)
     print(test_graph)
 
     # Complete the TSP algorithm
     tsp = nx.approximation.traveling_salesman_problem(test_graph, cycle=True)
     tsp = np.array(tsp)
+    print("First TSP Complete")
 
     # Adding some noise to a seperate set for testing of the traversal algorithm
     final_noise = tsp  # keep original for testing
@@ -419,16 +436,23 @@ def main():
     # Complete the TSP algorithm
     tsp = nx.approximation.traveling_salesman_problem(test_graph, cycle=True)
     tsp = np.array(tsp)
+    print("Second TSP Complete")
 
     # Adding some noise to a seperate set for testing of the traversal algorithm
     final_noise = tsp  # keep original for testing
     tsp = remove_intermediate_points(tsp, 10)  # reduced points
     final_route = np.concatenate((final_route, tsp))
 
+    # Need to define a home point, add to list, and ensure is same as start #
+    # print(final_route[-1])
+    # print(final_route[0])
+    # assert ((final_route[-1] == final_route[0]).all())
+    final_route = np.append(final_route, [final_route[0]], axis=0)
+
     #######################################
     ####  Plotting bounds and points   ####
     #######################################
-
+    print("Plotting")
     # Display
     s = geopandas.GeoSeries([
         LineString(geopandas.points_from_xy(x=tsp[:, 0], y=tsp[:, 1])),
@@ -441,10 +465,12 @@ def main():
     plt.plot(inner[:, 0], inner[:, 1])
     plt.plot(xy_per[:, 0], xy_per[:, 1])
     plt.plot(final_route[:, 0], final_route[:, 1], linewidth=0.1, color='red')
+
     plt.scatter(final_route[:, 0],
                 final_route[:, 1],
                 linewidth=0.1,
                 color='green')
+    plt.scatter(final_route[0, 0], final_route[0, 1], color='blue')
     for i in range(len(outer_nogos)):
         # plt.plot(outer_nogos[i][:, 0],
         #          outer_nogos[i][:, 1],
@@ -458,11 +484,14 @@ def main():
         ]).buffer(width / 2).plot(alpha=0.5, ax=ax)
         plt.plot(nogos[i][:, 0], nogos[i][:, 1], linewidth=1, color='red')
 
-    plt.show()
-
+    try:
+        plt.show()
+    except:
+        plt.savefig("./test.png")
     #######################################
     #### Saving the points for testing ####
     #######################################
+    print("Saving")
     # final_route = np.append(inner, tsp, axis=0)
     # print(tsp)
     # final_noise = np.append(inner, to_noise, axis=0)
@@ -476,7 +505,7 @@ def main():
     np.savetxt("../Map_Matching_Uniform/Noise_Tests/route.out",
                final_route,
                delimiter=',')
-
+    np.savetxt("./out_route.out", final_route, delimiter=',')
     # Adding noise to simulate inaccuracy and errors
     for i in range(0, 100):
         fname = "../Map_Matching_Uniform/Noise_Tests/" + str(i) + "_route.out"
@@ -493,7 +522,6 @@ def main():
         np.savetxt(fname, noise_route, delimiter=',')
 
     print(len(final_route))
-    print(final_route)
 
     # Converting back to GPS (long, lat)
     # for i in range(len(final_route)):
